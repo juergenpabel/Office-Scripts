@@ -1,0 +1,149 @@
+function main(workbook: ExcelScript.Workbook, xtea_op: string, xtea_key_hex: string, xtea_iv_hex: string, xtea_data_b64: string) {
+  let key_uint32s = new Uint32Array(4);
+  for (let i = 0; i < xtea_key_hex.length; i += 8) {
+    key_uint32s[i / 8] = parseInt(xtea_key_hex.substr(i, 8), 16);
+  }
+  let iv_uint8s = new Uint8Array(8);
+  for (let i = 0; i < 8; i++) {
+    iv_uint8s[i] = parseInt(xtea_iv_hex.substr(i*2, 2), 16);
+  }
+  let xtea_data_str = base64Decode(xtea_data_b64);
+  const xtea_data_uint8s = new Uint8Array(xtea_data_str.length);
+  for (let i = 0; i < data_str.length; i++) {
+    xtea_data_uint8s[i] = xtea_data_str.charCodeAt(i);
+  }
+  if (xtea_op == 'encrypt') {
+    return base64Encode(encrypt_xtea_cbc(key_uint32s, iv_uint8s, xtea_data_uint8s));
+  }
+  if (xtea_op == 'decrypt') {
+    return base64Encode(decrypt_xtea_cbc(key_uint32s, iv_uint8s, xtea_data_uint8s));
+  }
+  console.log("Unsupported command '" + xtea_op + "' in xtea_op (only 'encrypt' and 'decrypt')");
+  return null;
+}
+
+
+function encrypt_xtea_cbc(key_uint32s: Uint32Array, xor_uint8s: Uint8Array, data_uint8s Uint8Array) {
+  const plaintext_uint8s = new Uint8Array(data_uint8s.length + (8 - (data_uint8s.length % 8)));
+  let ciphertext_uint8s = new Uint8Array(plaintext_uint8s.length);
+  
+  plaintext_uint8s.set(data_uint8s, 0);
+  for (let i=0; i<8-(xtea_data_raw.length % 8); i++) {
+    plaintext_uint8s[plaintext_uint8s.length-i-1] = 8-(data_str.length % 8);
+  }
+  for (let i=0; i<plaintext_uint8s.length; i+=8) {
+    for (let j=0; j<8; j++) {
+      plaintext_uint8s[i+j] = plaintext_uint8s[i+j] ^ xor_uint8s[j];
+    }
+    ciphertext_uint8s.set(xtea_encrypt(plaintext_uint8s.slice(i, i+8), key_uint32s), i);
+    for (let j=0; j<8; j++) {
+      xor_uint8s[j] = ciphertext_uint8s[i+j];
+    }
+  }
+  return ciphertext_uint8s;
+}
+
+
+function decrypt_xtea_cbc(key_uint32s: Uint32Array, xor_uint8s: Uint8Array, data_uint8s: Uint8Array) {
+  const ciphertext_uint8s = new Uint8Array(data_uint8s.length + (8 - (data_uint8s.length % 8)));
+  const plaintext_uint8s = new Uint8Array(ciphertext_uint8s.length);
+  
+  ciphertext_uint8s.set(data_uint8s, 0);
+  for (let i=0; i<ciphertext_uint8s.length; i+=8) {
+    plaintext_uint8s.set(xtea_decrypt(ciphertext_uint8s.slice(i, i + 8), key_uint32s), i);
+    for (let j=0; j<8; j++) {
+      plaintext_uint8s[i+j] = plaintext_uint8s[i+j] ^ (i == 0 ? xor_uint8s[j] : ciphertext_uint8s[i-8+j]);
+    }
+  }
+  return plaintext_uint8s.slice(0, plaintext_uint8s.length - plaintext_uint8s[plaintext_uint8s.length - 1]);
+}
+
+
+function xtea_encrypt(plainText: Uint8Array, key: Uint32Array) {
+  let v = new Uint32Array(2);
+
+  v[0] = ((plainText[0] << 24) | (plainText[1] << 16) | (plainText[2] << 8) | (plainText[3] << 0));
+  v[1] = ((plainText[4] << 24) | (plainText[5] << 16) | (plainText[6] << 8) | (plainText[7] << 0));
+  const delta = 0x9E3779B9;
+  const n = 32; // Number of rounds
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    v[0] += (((v[1] << 4) ^ (v[1] >>> 5)) + v[1]) ^ (sum + key[sum & 3]);
+    sum += delta;
+    v[1] += (((v[0] << 4) ^ (v[0] >>> 5)) + v[0]) ^ (sum + key[(sum >>> 11) & 3]);
+  }
+  v[0] = swapByteOrder(v[0]);
+  v[1] = swapByteOrder(v[1]);
+  return new Uint8Array(v.buffer);
+}
+
+
+function xtea_decrypt(cipherText: Uint8Array, key: Uint32Array) {
+  let v = new Uint32Array(2);
+
+  v[0] = ((cipherText[0] << 24) | (cipherText[1] << 16) | (cipherText[2] << 8) | (cipherText[3] << 0));
+  v[1] = ((cipherText[4] << 24) | (cipherText[5] << 16) | (cipherText[6] << 8) | (cipherText[7] << 0));
+  const delta = 0x9E3779B9;
+  const n = 32; // Number of rounds
+  let sum = delta * n;
+  for (let i = 0; i < n; i++) {
+    v[1] -= (((v[0] << 4) ^ (v[0] >>> 5)) + v[0]) ^ (sum + key[(sum >>> 11) & 3]);
+    sum -= delta;
+    v[0] -= (((v[1] << 4) ^ (v[1] >>> 5)) + v[1]) ^ (sum + key[sum & 3]);
+  }
+  v[0] = swapByteOrder(v[0]);
+  v[1] = swapByteOrder(v[1]);
+  return new Uint8Array(v.buffer);
+}
+
+function swapByteOrder(num: number): number {
+  num = num >>> 0;
+  return (((num & 0xFF) << 24) | ((num & 0xFF00) <<  8) | ((num >> 8) & 0xFF00) | ((num >> 24) & 0xFF)) >>> 0;
+}
+
+
+function base64Decode(input: Uint8Array): string {
+  const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let output = '';
+
+  for(let i=0; i<input.length; i+=4) {
+    const b64_1 = BASE64_ALPHABET.indexOf(input[i+0]);
+    const b64_2 = BASE64_ALPHABET.indexOf(input[i+1]);
+    const b64_3 = BASE64_ALPHABET.indexOf(input[i+2]);
+    const b64_4 = BASE64_ALPHABET.indexOf(input[i+3]);
+    const raw_1 = ((b64_1     ) << 2) | (b64_2 >> 4);
+    const raw_2 = ((b64_2 & 15) << 4) | (b64_3 >> 2);
+    const raw_3 = ((b64_3 &  3) << 6) | (b64_4 >> 0);
+    output += String.fromCharCode(raw_1);
+    if (b64_3 !== 64) {
+      output += String.fromCharCode(raw_2);
+    }
+    if (b64_4 !== 64) {
+      output += String.fromCharCode(raw_3);
+    }
+  }
+  return output;
+}
+
+
+function base64Encode(input: Uint8Array): string {
+  const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let output = "";
+  
+  for(let i=0; i<input.length; i+=3) {
+    const raw_0 = input[i+0] ?? 0;
+    const raw_1 = input[i+1] ?? 0;
+    const raw_2 = input[i+2] ?? 0;
+
+    const b64_0 = ((raw_0       ) >> 2) & 0x3f;
+    const b64_1 = ((raw_0 & 0x03) << 4) | ((raw_1 >> 4) & 0x0f);
+    const b64_2 = ((raw_1 & 0x0f) << 2) | ((raw_2 >> 6) & 0x03);
+    const b64_3 = ((raw_2 & 0x3f) << 0);
+
+    output +=                          BASE64_ALPHABET.charAt(b64_0);
+    output +=                          BASE64_ALPHABET.charAt(b64_1);
+    output += ((i+1) < input.length) ? BASE64_ALPHABET.charAt(b64_2) : "=";
+    output += ((i+2) < input.length) ? BASE64_ALPHABET.charAt(b64_3) : "=";
+  }
+  return output;
+}
